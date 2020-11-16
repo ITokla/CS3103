@@ -13,32 +13,6 @@
 /*  Work Progress
 //Lam Ting 10/26 mmap worked
 //Lam Ting 11/08 Producer get the mmap text and able to print it
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 */
 //One Producer produce the String from inputfile to give multiple Consumer
 //if Producer get n+1 char is different with n 
@@ -64,43 +38,97 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <unistd.h>
+//Global ///
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t smutex = PTHREAD_MUTEX_INITIALIZER;
+int input_file_number;
+int file_open;
 
-void* Producer(void *arg){//Worked get the text 11/08
-    char *str = (char*) arg;//get the data 
-    fprintf( stdout, "%s\n", str);//print the data from main 
+//struct
+struct buffer{
+    char *str;
+    int textcount;
+};
+
+void *compress(void* buf){
+    struct buffer* input = (struct buffer*)buf;
+    char compressC;
+    int numOfc = 1;
+    int loop = 0;
+    compressC = input->str[0];
+    pthread_mutex_lock(&mutex);
+    while(loop<input->textcount){
+        if(compressC==input->str[loop+1]){
+            loop++;
+            numOfc++;
+        }else{
+            fwrite(&numOfc,1,sizeof(int),stdout);
+            fwrite(&compressC,1,sizeof(char),stdout);
+            numOfc = 1;
+            compressC = input->str[loop+1];
+            loop++;
+
+        }
+    }
+    pthread_mutex_unlock(&mutex);
     pthread_exit(NULL);//leave thread
 }
 
-int main(int argc, char** argv)
-{   
+
+
+int main(int argc, char** argv){   
+    file_open = 0;
     //pthread_mutex_t lock; it is useless now until we decide what is out critical section
-    if(argc<=1){
-        char buffer[] = "pzip: file1 [file2 ...]\n";
-        fwrite(buffer, 24 , 1,stdout); 
-        return 1;
+    if(argc<2){
+        printf("pzip: file1 [file2 ...]\n");
+        exit(1);
+    }else{
+        input_file_number = argc-1;//number of file
+        pthread_t tid[argc-1];//thread number
+        struct stat statbuf[input_file_number];//file info
+        struct buffer getinput[input_file_number];//buffer for thread
+        for(int i=0;i<input_file_number;i++){
+            file_open = open(argv[i+1] , O_RDONLY);
+            fstat (file_open,&statbuf[i]);
+            getinput[i].textcount = statbuf[i].st_size;
+            if(getinput[i].textcount<=0){
+                return 0;
+            }
+            if ((getinput[i].str = mmap (NULL, getinput[i].textcount, PROT_READ, MAP_SHARED, file_open, 0)) == (caddr_t) -1){//check mmap successful
+                    printf ("mmap error for input");
+                    return 0;
+            }
+        }
+        for (int i = 0; i < input_file_number; i++){
+            pthread_create(&tid[i-1],NULL,compress,(void*) &getinput[i]);
+        }
+
+        for (int i = 0; i < input_file_number; i++){
+            pthread_join(tid[i-1],NULL);
+        }
+        /*
+        //print mmap value       
+        for(int i=0;i<statbuf.st_size;i++){
+            printf ("%c",src[i]); 
+        }
+
+    for(int i=0;i<input->textcount;i++){
+        printf ("%c",input->str[i]); 
+        buffer = input->str[i];
+        if(buffer==compressC){
+            numOfc++;
+        }else{
+            fwrite(&numOfc,1,sizeof(int),stdout);
+            fwrite(&compressC,1,sizeof(char),stdout);
+            i = numOfc;
+            numOfc = 1;
+            compressC = buffer;
+        }
     }
-    //printf("Ver.12d3233\n");//version check//Test opening of file printf("%d", file_open);
-    int file_open = open(argv[1] , O_RDONLY);
-    struct stat statbuf;//file struct
-    fstat (file_open,&statbuf);//get the detail of file here : num of text || Testprintf("%ld", statbuf.st_size);
-    char *src; //mmap pointer
-    if ((src = mmap (NULL, statbuf.st_size, PROT_READ, MAP_SHARED, file_open, 0)) == (caddr_t) -1)//check mmap successful
-    {
-        printf ("mmap error for input");
+
+
+
+        */
         return 0;
     }
-    //print mmap value
-    /*
-    for(int i=0;i<statbuf.st_size;i++){
-        printf ("%c",src[i]); 
-    }
-    */
-    //not work
-    pthread_t producer;//declear Producer
-    pthread_create(&producer, NULL, Producer, src);//Create thread Worked 11/08
-
-    pthread_join(producer,NULL);//wait thread end
-
-    return 0;
 }
-
